@@ -50,7 +50,7 @@ const JsonError = error{ SyntaxError, OutOfMemory, EndOfStream, NoError, ParseFl
 fn skipWhilte(br: *ByteReader) void {
     var r = br.reader();
     while (true) {
-        var byte = r.readByte() catch 0;
+        var byte = try r.readByte();
         if (byte != ' ' and byte != '\t' and byte != '\r' and byte != '\n') {
             br.unget();
             break;
