@@ -47,7 +47,7 @@ const SyntaxError = error{};
 const ParseFloatError = std.fmt.ParseFloatError;
 const JsonError = error{ SyntaxError, OutOfMemory, EndOfStream, NoError, ParseFloatError, InvalidCharacter };
 
-fn skipWhilte(br: *ByteReader) void {
+fn skipWhilte(br: *ByteReader) JsonError!void {
     var r = br.reader();
     while (true) {
         var byte = try r.readByte();
@@ -60,21 +60,21 @@ fn skipWhilte(br: *ByteReader) void {
 
 fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayHashMap(Value) {
     var r = br.reader();
-    var byte = r.readByte() catch 0;
+    var byte = try r.readByte();
     var m = std.StringArrayHashMap(Value).init(a);
     if (byte != '{')
         return error.SyntaxError;
     while (true) {
-        skipWhilte(br);
+        try skipWhilte(br);
         const key = try parseString(a, br);
-        skipWhilte(br);
+        try skipWhilte(br);
         byte = try r.readByte();
         if (byte != ':')
             return error.SyntaxError;
-        skipWhilte(br);
+        try skipWhilte(br);
         var value = try parse(a, br);
         try m.put(key, value);
-        skipWhilte(br);
+        try skipWhilte(br);
         byte = try r.readByte();
         if (byte == '}')
             break;
@@ -89,10 +89,10 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
     if (byte != '[')
         return error.SyntaxError;
     while (true) {
-        skipWhilte(br);
+        try skipWhilte(br);
         var value = try parse(a, br);
         try m.append(value);
-        skipWhilte(br);
+        try skipWhilte(br);
         byte = r.readByte() catch 0;
         if (byte == ']') break;
         if (byte != ',')
@@ -175,9 +175,9 @@ fn parseNumber(a: std.mem.Allocator, br: *ByteReader) JsonError!f64 {
 }
 
 pub fn parse(a: std.mem.Allocator, br: *ByteReader) JsonError!Value {
-    skipWhilte(br);
+    try skipWhilte(br);
     var r = br.reader();
-    var byte = r.readByte() catch 0;
+    var byte = try r.readByte();
     br.unget();
     return switch (byte) {
         '{' => Value{ .Object = try parseObject(a, br) }, // ok
@@ -187,7 +187,7 @@ pub fn parse(a: std.mem.Allocator, br: *ByteReader) JsonError!Value {
         'f' => Value{ .Bool = try parseBool(a, br) },
         'n' => Value{ .Null = try parseNull(a, br) },
         '0'...'9', '-', 'e', '.' => Value{ .Number = try parseNumber(a, br) }, // ok
-        else => Value{ .Number = 0 },
+        else => error.SyntaxError,
     };
 }
 
