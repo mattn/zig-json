@@ -50,7 +50,7 @@ const JsonError = error{ SyntaxError, OutOfMemory, EndOfStream, NoError, ParseFl
 fn skipWhilte(br: *ByteReader) JsonError!void {
     var r = br.reader();
     while (true) {
-        var byte = try r.readByte();
+        var byte = r.readByte() catch 0;
         if (byte != ' ' and byte != '\t' and byte != '\r' and byte != '\n') {
             br.unget();
             break;
@@ -84,7 +84,7 @@ fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayH
 
 fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Value) {
     var r = br.reader();
-    var byte = r.readByte() catch 0;
+    var byte = try r.readByte();
     var m = std.ArrayList(Value).init(a);
     if (byte != '[')
         return error.SyntaxError;
@@ -93,7 +93,7 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
         var value = try parse(a, br);
         try m.append(value);
         try skipWhilte(br);
-        byte = r.readByte() catch 0;
+        byte = try r.readByte();
         if (byte == ']') break;
         if (byte != ',')
             return error.SyntaxError;
@@ -201,4 +201,11 @@ test "basic add functionality" {
     bytes = ByteReader.init("[\"foo\" , 1]");
     v = try parse(allocator, &bytes);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
+
+    bytes = ByteReader.init("[\"foo\" , 1");
+    const result = parse(allocator, &bytes) catch |err| switch (err) {
+        error.EndOfStream => Value{ .Bool = true },
+        else => Value{ .Bool = false },
+    };
+    try std.testing.expectEqual(true, result.Bool);
 }
