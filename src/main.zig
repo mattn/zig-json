@@ -79,6 +79,7 @@ const Value = union(enum) {
                 try w.writeByte('"');
                 for (v) |c| {
                     switch (c) {
+                        '\\' => try w.writeAll("\\\\"),
                         '"' => try w.writeAll("\\\""),
                         '\n' => try w.writeAll("\\n"),
                         '\r' => try w.writeAll("\\r"),
