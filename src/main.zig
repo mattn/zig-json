@@ -103,8 +103,9 @@ fn skipWhilte(br: *ByteReader) JsonError!void {
 fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayHashMap(Value) {
     var r = br.reader();
     var byte = try r.readByte();
-    var m = std.StringArrayHashMap(Value).init(a);
     if (byte != '{') return error.SyntaxError;
+    var m = std.StringArrayHashMap(Value).init(a);
+    errdefer m.deinit();
     while (true) {
         try skipWhilte(br);
         const key = try parseString(a, br);
@@ -124,8 +125,9 @@ fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayH
 fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Value) {
     var r = br.reader();
     var byte = try r.readByte();
-    var m = std.ArrayList(Value).init(a);
     if (byte != '[') return error.SyntaxError;
+    var m = std.ArrayList(Value).init(a);
+    errdefer m.deinit();
     while (true) {
         try skipWhilte(br);
         var value = try parse(a, br);
@@ -143,6 +145,7 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
     var byte = try r.readByte();
     if (byte != '"') return error.SyntaxError;
     var bytes = std.ArrayList(u8).init(a);
+    errdefer bytes.deinit();
     while (true) {
         byte = try r.readByte();
         if (byte == '\\') {
@@ -163,6 +166,7 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
 fn parseBool(a: std.mem.Allocator, br: *ByteReader) JsonError!bool {
     var r = br.reader();
     var bytes = std.ArrayList(u8).init(a);
+    errdefer bytes.deinit();
     while (true) {
         var byte = switch (try r.readByte()) {
             't', 'r', 'u', 'e', 'f', 'a', 'l', 's' => |b| b,
@@ -182,6 +186,7 @@ fn parseBool(a: std.mem.Allocator, br: *ByteReader) JsonError!bool {
 fn parseNull(a: std.mem.Allocator, br: *ByteReader) JsonError!void {
     var r = br.reader();
     var bytes = std.ArrayList(u8).init(a);
+    errdefer bytes.deinit();
     while (true) {
         var byte = switch (try r.readByte()) {
             'n', 'u', 'l' => |b| b,
