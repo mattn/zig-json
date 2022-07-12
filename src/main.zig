@@ -232,20 +232,26 @@ pub fn parse(a: std.mem.Allocator, br: *ByteReader) JsonError!Value {
 test "basic add functionality" {
     var a = std.heap.page_allocator;
 
-    var br = ByteReader.init("{\"foo\": 1}");
+    var br = ByteReader.init(
+        \\{"foo": 1}
+    );
     var v = try parse(a, &br);
     try std.testing.expect(.Object == v);
     try std.testing.expect(.Number == v.Object.get("foo").?);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
-    br = ByteReader.init("{\"foo\": {\"bar\": true}}");
+    br = ByteReader.init(
+        \\{"foo": {"bar": true}}
+    );
     v = try parse(a, &br);
     try std.testing.expect(.Object == v);
     try std.testing.expect(.Object == v.Object.get("foo").?);
     try std.testing.expect(.Bool == v.Object.get("foo").?.Object.get("bar").?);
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
-    br = ByteReader.init("[\"foo\" , 2]");
+    br = ByteReader.init(
+        \\["foo" , 2]
+    );
     v = try parse(a, &br);
     try std.testing.expect(.Array == v);
     try std.testing.expect(.String == v.Array.items[0]);
@@ -253,16 +259,22 @@ test "basic add functionality" {
     try std.testing.expect(.Number == v.Array.items[1]);
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 
-    br = ByteReader.init("[\"foo\" , 1");
+    br = ByteReader.init(
+        \\["foo" , 1
+    );
     const result = parse(a, &br) catch |err| switch (err) {
         error.EndOfStream => Value{ .Bool = true },
         else => Value{ .Bool = false },
     };
     try std.testing.expectEqual(true, result.Bool);
 
-    br = ByteReader.init("{\"foo\": {\"bar\": true}}");
+    br = ByteReader.init(
+        \\{"foo": {"bar": true}}
+    );
     v = try parse(a, &br);
     var bytes = std.ArrayList(u8).init(a);
     try v.stringify(a, bytes.writer());
-    try std.testing.expect(std.mem.eql(u8, "{\"foo\":{\"bar\":true}}", bytes.items));
+    try std.testing.expect(std.mem.eql(u8,
+        \\{"foo":{"bar":true}}
+    , bytes.items));
 }
