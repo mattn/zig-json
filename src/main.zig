@@ -41,7 +41,7 @@ const Value = union(enum) {
 
     pub fn stringify(self: @This(), a: std.mem.Allocator, w: anytype) JsonError!void {
         switch (self) {
-            Value.Object => |v| {
+            .Object => |v| {
                 try w.writeByte('{');
                 for (v.keys()) |key, i| {
                     if (i > 0) try w.writeByte(',');
@@ -51,7 +51,7 @@ const Value = union(enum) {
                 }
                 try w.writeByte('}');
             },
-            Value.Array => |v| {
+            .Array => |v| {
                 try w.writeByte('[');
                 for (v.items) |value, i| {
                     if (i > 0) try w.writeByte(',');
@@ -59,13 +59,13 @@ const Value = union(enum) {
                 }
                 try w.writeByte(']');
             },
-            Value.Bool => {
+            .Bool => {
                 try w.writeAll(if (self.Bool) "true" else "false");
             },
-            Value.Number => |v| {
+            .Number => |v| {
                 try w.print("{}", .{v});
             },
-            Value.String => |v| {
+            .String => |v| {
                 try w.writeByte('"');
                 for (v) |c| {
                     switch (c) {
@@ -78,7 +78,7 @@ const Value = union(enum) {
                 }
                 try w.writeByte('"');
             },
-            Value.Null => {
+            .Null => {
                 try w.writeAll("null");
             },
         }
@@ -234,23 +234,23 @@ test "basic add functionality" {
 
     var br = ByteReader.init("{\"foo\": 1}");
     var v = try parse(a, &br);
-    try std.testing.expect(Value.Object == v);
-    try std.testing.expect(Value.Number == v.Object.get("foo").?);
+    try std.testing.expect(.Object == v);
+    try std.testing.expect(.Number == v.Object.get("foo").?);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
     br = ByteReader.init("{\"foo\": {\"bar\": true}}");
     v = try parse(a, &br);
-    try std.testing.expect(Value.Object == v);
-    try std.testing.expect(Value.Object == v.Object.get("foo").?);
-    try std.testing.expect(Value.Bool == v.Object.get("foo").?.Object.get("bar").?);
+    try std.testing.expect(.Object == v);
+    try std.testing.expect(.Object == v.Object.get("foo").?);
+    try std.testing.expect(.Bool == v.Object.get("foo").?.Object.get("bar").?);
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
     br = ByteReader.init("[\"foo\" , 2]");
     v = try parse(a, &br);
-    try std.testing.expect(Value.Array == v);
-    try std.testing.expect(Value.String == v.Array.items[0]);
+    try std.testing.expect(.Array == v);
+    try std.testing.expect(.String == v.Array.items[0]);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
-    try std.testing.expect(Value.Number == v.Array.items[1]);
+    try std.testing.expect(.Number == v.Array.items[1]);
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 
     br = ByteReader.init("[\"foo\" , 1");
