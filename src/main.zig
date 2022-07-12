@@ -198,9 +198,10 @@ test "basic add functionality" {
     var v = try parse(allocator, &bytes);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
-    bytes = ByteReader.init("[\"foo\" , 1]");
+    bytes = ByteReader.init("[\"foo\" , 2]");
     v = try parse(allocator, &bytes);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
+    try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 
     bytes = ByteReader.init("[\"foo\" , 1");
     const result = parse(allocator, &bytes) catch |err| switch (err) {
