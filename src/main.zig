@@ -40,6 +40,58 @@ const Value = union(enum) {
     String: []const u8,
     Number: f64,
     Bool: bool,
+
+    pub fn stringify(self: @This(), a: std.mem.Allocator, w: anytype) JsonError!void {
+        switch (self) {
+            Value.Object => |v| {
+                try w.writeByte('{');
+                for (v.keys()) |key, i| {
+                    if (i > 0) {
+                        try w.writeByte(',');
+                    }
+                    try (Value{ .String = key }).stringify(a, w);
+                    try w.writeByte(':');
+                    try v.get(key).?.stringify(a, w);
+                }
+                try w.writeByte('}');
+            },
+            Value.Array => |v| {
+                try w.writeByte('[');
+                for (v.items) |value, i| {
+                    if (i > 0) {
+                        try w.writeByte(',');
+                    }
+                    try value.stringify(a, w);
+                }
+                try w.writeByte(']');
+            },
+            Value.Bool => {
+                if (self.Bool) {
+                    try w.writeAll("true");
+                } else {
+                    try w.writeAll("false");
+                }
+            },
+            Value.Number => |v| {
+                try w.print("{}", .{v});
+            },
+            Value.String => |v| {
+                try w.writeByte('"');
+                for (v) |c| {
+                    switch (c) {
+                        '"' => try w.writeAll("\\\""),
+                        '\n' => try w.writeAll("\\n"),
+                        '\r' => try w.writeAll("\\r"),
+                        else => try w.writeByte(c),
+                    }
+                }
+                try w.writeByte('"');
+            },
+            Value.Null => {
+                try w.writeAll("null");
+            },
+        }
+    }
 };
 
 const SyntaxError = error{};
@@ -199,33 +251,39 @@ pub fn parse(a: std.mem.Allocator, br: *ByteReader) JsonError!Value {
 }
 
 test "basic add functionality" {
-    var allocator = std.heap.page_allocator;
+    var a = std.heap.page_allocator;
 
-    var bytes = ByteReader.init("{\"foo\": 1}");
-    var v = try parse(allocator, &bytes);
+    var br = ByteReader.init("{\"foo\": 1}");
+    var v = try parse(a, &br);
     try std.testing.expect(Value.Object == v);
     try std.testing.expect(Value.Number == v.Object.get("foo").?);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
-    bytes = ByteReader.init("{\"foo\": {\"bar\": true}}");
-    v = try parse(allocator, &bytes);
+    br = ByteReader.init("{\"foo\": {\"bar\": true}}");
+    v = try parse(a, &br);
     try std.testing.expect(Value.Object == v);
     try std.testing.expect(Value.Object == v.Object.get("foo").?);
     try std.testing.expect(Value.Bool == v.Object.get("foo").?.Object.get("bar").?);
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
-    bytes = ByteReader.init("[\"foo\" , 2]");
-    v = try parse(allocator, &bytes);
+    br = ByteReader.init("[\"foo\" , 2]");
+    v = try parse(a, &br);
     try std.testing.expect(Value.Array == v);
     try std.testing.expect(Value.String == v.Array.items[0]);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
     try std.testing.expect(Value.Number == v.Array.items[1]);
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 
-    bytes = ByteReader.init("[\"foo\" , 1");
-    const result = parse(allocator, &bytes) catch |err| switch (err) {
+    br = ByteReader.init("[\"foo\" , 1");
+    const result = parse(a, &br) catch |err| switch (err) {
         error.EndOfStream => Value{ .Bool = true },
         else => Value{ .Bool = false },
     };
     try std.testing.expectEqual(true, result.Bool);
+
+    br = ByteReader.init("{\"foo\": {\"bar\": true}}");
+    v = try parse(a, &br);
+    var bytes = std.ArrayList(u8).init(a);
+    try v.stringify(a, bytes.writer());
+    try std.testing.expect(std.mem.eql(u8, "{\"foo\":{\"bar\":true}}", bytes.items));
 }
