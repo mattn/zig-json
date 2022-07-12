@@ -195,15 +195,23 @@ test "basic add functionality" {
 
     var bytes = ByteReader.init("{\"foo\": 1}");
     var v = try parse(allocator, &bytes);
+    try std.testing.expect(Value.Object == v);
+    try std.testing.expect(Value.Number == v.Object.get("foo").?);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
     bytes = ByteReader.init("{\"foo\": {\"bar\": true}}");
     v = try parse(allocator, &bytes);
+    try std.testing.expect(Value.Object == v);
+    try std.testing.expect(Value.Object == v.Object.get("foo").?);
+    try std.testing.expect(Value.Bool == v.Object.get("foo").?.Object.get("bar").?);
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
     bytes = ByteReader.init("[\"foo\" , 2]");
     v = try parse(allocator, &bytes);
+    try std.testing.expect(Value.Array == v);
+    try std.testing.expect(Value.String == v.Array.items[0]);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
+    try std.testing.expect(Value.Number == v.Array.items[1]);
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 
     bytes = ByteReader.init("[\"foo\" , 1");
