@@ -108,6 +108,14 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
     var bytes = std.ArrayList(u8).init(a);
     while (true) {
         byte = try r.readByte();
+        if (byte == '\\') {
+            byte = switch (try r.readByte()) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                else => byte,
+            };
+        }
         if (byte == '"')
             break;
         try bytes.append(byte);
