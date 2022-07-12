@@ -87,7 +87,7 @@ const Value = union(enum) {
 
 const SyntaxError = error{};
 const ParseFloatError = std.fmt.ParseFloatError;
-const JsonError = error{ SyntaxError, OutOfMemory, EndOfStream, NoError, ParseFloatError, InvalidCharacter };
+const JsonError = error{ SyntaxError, OutOfMemory, EndOfStream, NoError, InvalidCharacter } || ParseFloatError;
 
 fn skipWhilte(br: *ByteReader) JsonError!void {
     var r = br.reader();
@@ -267,11 +267,12 @@ test "basic add functionality" {
     br = ByteReader.init(
         \\["foo" , 1
     );
-    const result = parse(a, &br) catch |err| switch (err) {
-        error.EndOfStream => Value{ .Bool = true },
-        else => Value{ .Bool = false },
-    };
-    try std.testing.expectEqual(true, result.Bool);
+    try std.testing.expectError(error.EndOfStream, parse(a, &br));
+
+    br = ByteReader.init(
+        \\["foo"a
+    );
+    try std.testing.expectError(error.SyntaxError, parse(a, &br));
 
     br = ByteReader.init(
         \\{"foo": {"bar": true}}
