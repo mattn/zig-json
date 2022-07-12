@@ -1,5 +1,4 @@
 const std = @import("std");
-const testing = std.testing;
 
 const ByteReader = struct {
     str: []const u8,
