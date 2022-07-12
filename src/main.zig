@@ -154,7 +154,7 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
     while (true) {
         byte = try r.readByte();
         if (byte == '\\') {
-            byte = switch (try r.readByte()) {
+            byte = switch (r.readByte() catch 0) {
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
@@ -212,8 +212,8 @@ fn parseNumber(a: std.mem.Allocator, br: *ByteReader) JsonError!f64 {
     var bytes = std.ArrayList(u8).init(a);
     defer bytes.deinit();
     while (true) {
-        const byte = switch (try r.readByte()) {
-            '0'...'9', '.' => |b| b,
+        const byte = switch (r.readByte() catch 0) {
+            '0'...'9', '-', 'e', '.' => |b| b,
             else => 0,
         };
         if (byte == 0) break;
@@ -284,18 +284,25 @@ test "parse Array" {
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 }
 
-const ArenaAllocator = std.heap.ArenaAllocator;
-
 test "parse Invalid" {
     const a = std.heap.page_allocator;
 
     var br = ByteReader.init(
         \\["foo" , 1
     );
-    try std.testing.expectError(error.EndOfStream, parse(a, &br));
+    try std.testing.expectError(error.SyntaxError, parse(a, &br));
 
     br = ByteReader.init(
         \\["foo"a
     );
     try std.testing.expectError(error.SyntaxError, parse(a, &br));
 }
+
+//test "leak test" {
+//    const a = std.testing.allocator;
+//
+//    var br = ByteReader.init(
+//        \\"fo"
+//    );
+//    _ = try parse(a, &br);
+//}
