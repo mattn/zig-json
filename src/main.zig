@@ -20,9 +20,7 @@ const ByteReader = struct {
     }
 
     fn read(self: *Self, dest: []u8) Error!usize {
-        if (self.str.len <= self.curr or dest.len == 0)
-            return 0;
-
+        if (self.str.len <= self.curr or dest.len == 0) return 0;
         dest[0] = self.str[self.curr];
         self.curr += 1;
         return 1;
@@ -46,9 +44,7 @@ const Value = union(enum) {
             Value.Object => |v| {
                 try w.writeByte('{');
                 for (v.keys()) |key, i| {
-                    if (i > 0) {
-                        try w.writeByte(',');
-                    }
+                    if (i > 0) try w.writeByte(',');
                     try (Value{ .String = key }).stringify(a, w);
                     try w.writeByte(':');
                     try v.get(key).?.stringify(a, w);
@@ -58,19 +54,13 @@ const Value = union(enum) {
             Value.Array => |v| {
                 try w.writeByte('[');
                 for (v.items) |value, i| {
-                    if (i > 0) {
-                        try w.writeByte(',');
-                    }
+                    if (i > 0) try w.writeByte(',');
                     try value.stringify(a, w);
                 }
                 try w.writeByte(']');
             },
             Value.Bool => {
-                if (self.Bool) {
-                    try w.writeAll("true");
-                } else {
-                    try w.writeAll("false");
-                }
+                try w.writeAll(if (self.Bool) "true" else "false");
             },
             Value.Number => |v| {
                 try w.print("{}", .{v});
@@ -114,22 +104,19 @@ fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayH
     var r = br.reader();
     var byte = try r.readByte();
     var m = std.StringArrayHashMap(Value).init(a);
-    if (byte != '{')
-        return error.SyntaxError;
+    if (byte != '{') return error.SyntaxError;
     while (true) {
         try skipWhilte(br);
         const key = try parseString(a, br);
         try skipWhilte(br);
         byte = try r.readByte();
-        if (byte != ':')
-            return error.SyntaxError;
+        if (byte != ':') return error.SyntaxError;
         try skipWhilte(br);
         var value = try parse(a, br);
         try m.put(key, value);
         try skipWhilte(br);
         byte = try r.readByte();
-        if (byte == '}')
-            break;
+        if (byte == '}') break;
     }
     return m;
 }
@@ -138,8 +125,7 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
     var r = br.reader();
     var byte = try r.readByte();
     var m = std.ArrayList(Value).init(a);
-    if (byte != '[')
-        return error.SyntaxError;
+    if (byte != '[') return error.SyntaxError;
     while (true) {
         try skipWhilte(br);
         var value = try parse(a, br);
@@ -147,8 +133,7 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte == ']') break;
-        if (byte != ',')
-            return error.SyntaxError;
+        if (byte != ',') return error.SyntaxError;
     }
     return m;
 }
@@ -156,8 +141,7 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
 fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
     var r = br.reader();
     var byte = try r.readByte();
-    if (byte != '"')
-        return error.SyntaxError;
+    if (byte != '"') return error.SyntaxError;
     var bytes = std.ArrayList(u8).init(a);
     while (true) {
         byte = try r.readByte();
@@ -168,9 +152,9 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
                 't' => '\t',
                 else => byte,
             };
-        }
-        if (byte == '"')
+        } else if (byte == '"') {
             break;
+        }
         try bytes.append(byte);
     }
     return bytes.items;
@@ -180,9 +164,8 @@ fn parseBool(a: std.mem.Allocator, br: *ByteReader) JsonError!bool {
     var r = br.reader();
     var bytes = std.ArrayList(u8).init(a);
     while (true) {
-        var byte = try r.readByte();
-        byte = switch (byte) {
-            't', 'r', 'u', 'e', 'f', 'a', 'l', 's' => byte,
+        var byte = switch (try r.readByte()) {
+            't', 'r', 'u', 'e', 'f', 'a', 'l', 's' => |b| b,
             else => 0,
         };
         if (byte == 0) {
@@ -191,10 +174,8 @@ fn parseBool(a: std.mem.Allocator, br: *ByteReader) JsonError!bool {
         }
         try bytes.append(byte);
     }
-    if (std.mem.eql(u8, bytes.items, "true"))
-        return true;
-    if (std.mem.eql(u8, bytes.items, "false"))
-        return false;
+    if (std.mem.eql(u8, bytes.items, "true")) return true;
+    if (std.mem.eql(u8, bytes.items, "false")) return false;
     return error.SyntaxError;
 }
 
@@ -202,9 +183,8 @@ fn parseNull(a: std.mem.Allocator, br: *ByteReader) JsonError!void {
     var r = br.reader();
     var bytes = std.ArrayList(u8).init(a);
     while (true) {
-        var byte = try r.readByte();
-        byte = switch (byte) {
-            'n', 'u', 'l' => byte,
+        var byte = switch (try r.readByte()) {
+            'n', 'u', 'l' => |b| b,
             else => 0,
         };
         if (byte == 0) {
@@ -213,8 +193,7 @@ fn parseNull(a: std.mem.Allocator, br: *ByteReader) JsonError!void {
         }
         try bytes.append(byte);
     }
-    if (std.mem.eql(u8, bytes.items, "null"))
-        return;
+    if (std.mem.eql(u8, bytes.items, "null")) return;
     return error.SyntaxError;
 }
 
@@ -223,9 +202,8 @@ fn parseNumber(a: std.mem.Allocator, br: *ByteReader) JsonError!f64 {
     var bytes = std.ArrayList(u8).init(a);
     defer bytes.deinit();
     while (true) {
-        var byte = try r.readByte();
-        byte = switch (byte) {
-            '0'...'9', '.' => byte,
+        var byte = switch (try r.readByte()) {
+            '0'...'9', '.' => |b| b,
             else => 0,
         };
         if (byte == 0) break;
