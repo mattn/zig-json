@@ -234,7 +234,7 @@ pub fn parse(a: std.mem.Allocator, br: *ByteReader) JsonError!Value {
     };
 }
 
-test "basic add functionality" {
+test "parse Object" {
     var a = std.heap.page_allocator;
 
     var br = ByteReader.init(
@@ -255,26 +255,6 @@ test "basic add functionality" {
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
     br = ByteReader.init(
-        \\["foo" , 2]
-    );
-    v = try parse(a, &br);
-    try std.testing.expect(.Array == v);
-    try std.testing.expect(.String == v.Array.items[0]);
-    try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
-    try std.testing.expect(.Number == v.Array.items[1]);
-    try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
-
-    br = ByteReader.init(
-        \\["foo" , 1
-    );
-    try std.testing.expectError(error.EndOfStream, parse(a, &br));
-
-    br = ByteReader.init(
-        \\["foo"a
-    );
-    try std.testing.expectError(error.SyntaxError, parse(a, &br));
-
-    br = ByteReader.init(
         \\{"foo": {"bar": true}}
     );
     v = try parse(a, &br);
@@ -283,4 +263,32 @@ test "basic add functionality" {
     try std.testing.expect(std.mem.eql(u8,
         \\{"foo":{"bar":true}}
     , bytes.items));
+}
+
+test "parse Array" {
+    var a = std.heap.page_allocator;
+
+    var br = ByteReader.init(
+        \\["foo" , 2]
+    );
+    var v = try parse(a, &br);
+    try std.testing.expect(.Array == v);
+    try std.testing.expect(.String == v.Array.items[0]);
+    try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
+    try std.testing.expect(.Number == v.Array.items[1]);
+    try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
+}
+
+test "parse Invalid" {
+    var a = std.heap.page_allocator;
+
+    var br = ByteReader.init(
+        \\["foo" , 1
+    );
+    try std.testing.expectError(error.EndOfStream, parse(a, &br));
+
+    br = ByteReader.init(
+        \\["foo"a
+    );
+    try std.testing.expectError(error.SyntaxError, parse(a, &br));
 }
