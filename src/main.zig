@@ -35,7 +35,7 @@ const Value = union(enum) {
     Null,
     Object: std.StringArrayHashMap(Value),
     Array: std.ArrayList(Value),
-    String: []const u8,
+    String: std.ArrayList(u8),
     Number: f64,
     Bool: bool,
 
@@ -45,7 +45,10 @@ const Value = union(enum) {
                 try w.writeByte('{');
                 for (v.keys()) |key, i| {
                     if (i > 0) try w.writeByte(',');
-                    try (Value{ .String = key }).stringify(a, w);
+                    var bytes = std.ArrayList(u8).init(a);
+                    defer bytes.deinit();
+                    try bytes.writer().writeAll(key);
+                    try (Value{ .String = bytes }).stringify(a, w);
                     try w.writeByte(':');
                     try v.get(key).?.stringify(a, w);
                 }
@@ -67,7 +70,7 @@ const Value = union(enum) {
             },
             .String => |v| {
                 try w.writeByte('"');
-                for (v) |c| {
+                for (v.items) |c| {
                     switch (c) {
                         '\\' => try w.writeAll("\\\\"),
                         '"' => try w.writeAll("\\\""),
@@ -84,9 +87,34 @@ const Value = union(enum) {
         }
     }
 
+    pub fn deinitForAllocator(self: *Value, a: std.mem.Allocator) void {
+        switch (self.*) {
+            .Object => {
+                for (self.Object.keys()) |key| {
+                    a.free(key);
+                }
+                self.Object.deinit();
+            },
+            .Array => {
+                self.Array.deinit();
+            },
+            .String => {
+                self.String.deinit();
+            },
+            else => {},
+        }
+    }
+
     pub fn deinit(self: *Value) void {
-        self.Object.deinit();
-        self.Array.deinit();
+        switch (self.*) {
+            .Object => {
+                self.Object.deinit();
+            },
+            .Array => {
+                self.Array.deinit();
+            },
+            else => {},
+        }
     }
 };
 
@@ -113,13 +141,14 @@ fn parseObject(a: std.mem.Allocator, br: *ByteReader) JsonError!std.StringArrayH
     errdefer m.deinit();
     while (true) {
         try skipWhilte(br);
-        const key = try parseString(a, br);
+        var key = try parseString(a, br);
+        defer key.deinit();
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte != ':') return error.SyntaxError;
         try skipWhilte(br);
         const value = try parse(a, br);
-        try m.put(key, value);
+        try m.put(key.toOwnedSlice(), value);
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte == '}') break;
@@ -145,7 +174,7 @@ fn parseArray(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(Val
     return m;
 }
 
-fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
+fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError!std.ArrayList(u8) {
     const r = br.reader();
     var byte = try r.readByte();
     if (byte != '"') return error.SyntaxError;
@@ -165,7 +194,7 @@ fn parseString(a: std.mem.Allocator, br: *ByteReader) JsonError![]const u8 {
         }
         try bytes.append(byte);
     }
-    return bytes.items;
+    return bytes;
 }
 
 fn parseBool(a: std.mem.Allocator, br: *ByteReader) JsonError!bool {
@@ -278,8 +307,7 @@ test "parse Array" {
     );
     var v = try parse(a, &br);
     try std.testing.expect(.Array == v);
-    try std.testing.expect(.String == v.Array.items[0]);
-    try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String));
+    try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String.items));
     try std.testing.expect(.Number == v.Array.items[1]);
     try std.testing.expectEqual(@as(f64, 2.0), v.Array.items[1].Number);
 }
@@ -298,11 +326,18 @@ test "parse Invalid" {
     try std.testing.expectError(error.SyntaxError, parse(a, &br));
 }
 
-//test "leak test" {
-//    const a = std.testing.allocator;
-//
-//    var br = ByteReader.init(
-//        \\"fo"
-//    );
-//    _ = try parse(a, &br);
-//}
+test "leak test" {
+    const a = std.testing.allocator;
+
+    var br = ByteReader.init(
+        \\"fo"
+    );
+    var v = try parse(a, &br);
+    v.deinitForAllocator(a);
+
+    br = ByteReader.init(
+        \\{"foo": 1}
+    );
+    v = try parse(a, &br);
+    v.deinitForAllocator(a);
+}
