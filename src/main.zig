@@ -87,11 +87,11 @@ const Value = union(enum) {
         }
     }
 
-    pub fn deinitForAllocator(self: *Value, a: std.mem.Allocator) void {
+    pub fn deinit(self: *Value) void {
         switch (self.*) {
             .Object => {
                 for (self.Object.keys()) |key| {
-                    a.free(key);
+                    self.Object.allocator.free(key);
                 }
                 self.Object.deinit();
             },
@@ -100,18 +100,6 @@ const Value = union(enum) {
             },
             .String => {
                 self.String.deinit();
-            },
-            else => {},
-        }
-    }
-
-    pub fn deinit(self: *Value) void {
-        switch (self.*) {
-            .Object => {
-                self.Object.deinit();
-            },
-            .Array => {
-                self.Array.deinit();
             },
             else => {},
         }
@@ -333,11 +321,11 @@ test "leak test" {
         \\"fo"
     );
     var v = try parse(a, &br);
-    v.deinitForAllocator(a);
+    v.deinit();
 
     br = ByteReader.init(
         \\{"foo": 1}
     );
     v = try parse(a, &br);
-    v.deinitForAllocator(a);
+    v.deinit();
 }
