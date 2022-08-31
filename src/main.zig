@@ -241,26 +241,29 @@ pub fn parse(a: std.mem.Allocator, br: anytype) JsonError!Value {
 test "parse Object" {
     const a = std.heap.page_allocator;
 
-    var br = reader(std.io.fixedBufferStream(
+    var fs = std.io.fixedBufferStream(
         \\{"foo": 1}
-    ).reader());
+    );
+    var br = reader(fs.reader());
     var v = try parse(a, &br);
     try std.testing.expect(.Object == v);
     try std.testing.expect(.Number == v.Object.get("foo").?);
     try std.testing.expectEqual(@as(f64, 1.0), v.Object.get("foo").?.Number);
 
-    br = reader(std.io.fixedBufferStream(
+    fs = std.io.fixedBufferStream(
         \\{"foo": {"bar": true}}
-    ).reader());
+    );
+    br = reader(fs.reader());
     v = try parse(a, &br);
     try std.testing.expect(.Object == v);
     try std.testing.expect(.Object == v.Object.get("foo").?);
     try std.testing.expect(.Bool == v.Object.get("foo").?.Object.get("bar").?);
     try std.testing.expectEqual(true, v.Object.get("foo").?.Object.get("bar").?.Bool);
 
-    br = reader(std.io.fixedBufferStream(
+    fs = std.io.fixedBufferStream(
         \\{"foo": {"bar": true}}
-    ).reader());
+    );
+    br = reader(fs.reader());
     v = try parse(a, &br);
     var bytes = std.ArrayList(u8).init(a);
     try v.stringify(a, bytes.writer());
@@ -272,9 +275,10 @@ test "parse Object" {
 test "parse Array" {
     const a = std.heap.page_allocator;
 
-    var br = reader(std.io.fixedBufferStream(
+    var fs = std.io.fixedBufferStream(
         \\["foo" , 2]
-    ).reader());
+    );
+    var br = reader(fs.reader());
     var v = try parse(a, &br);
     try std.testing.expect(.Array == v);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String.items));
@@ -285,29 +289,33 @@ test "parse Array" {
 test "parse Invalid" {
     const a = std.heap.page_allocator;
 
-    var br = reader(std.io.fixedBufferStream(
+    var fs = std.io.fixedBufferStream(
         \\["foo" , 1
-    ).reader());
+    );
+    var br = reader(fs.reader());
     try std.testing.expectError(error.EndOfStream, parse(a, &br));
 
-    br = reader(std.io.fixedBufferStream(
+    fs = std.io.fixedBufferStream(
         \\["foo"a
-    ).reader());
+    );
+    br = reader(fs.reader());
     try std.testing.expectError(error.SyntaxError, parse(a, &br));
 }
 
 test "leak test" {
     const a = std.testing.allocator;
 
-    var br = reader(std.io.fixedBufferStream(
+    var fs = std.io.fixedBufferStream(
         \\"fo"
-    ).reader());
+    );
+    var br = reader(fs.reader());
     var v = try parse(a, &br);
     v.deinit();
 
-    br = reader(std.io.fixedBufferStream(
+    fs = std.io.fixedBufferStream(
         \\{"foo": 1}
-    ).reader());
+    );
+    br = reader(fs.reader());
     v = try parse(a, &br);
     v.deinit();
 }
