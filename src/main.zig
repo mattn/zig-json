@@ -4,7 +4,7 @@ fn reader(r: anytype) bufReader(@TypeOf(r)) {
     return std.io.peekStream(2, r);
 }
 
-fn bufReader(r: anytype) type {
+fn bufReader(comptime r: anytype) type {
     return std.io.PeekStream(std.fifo.LinearFifoBufferType{ .Static = 2 }, r);
 }
 
