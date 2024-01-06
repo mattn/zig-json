@@ -20,7 +20,7 @@ const Value = union(enum) {
         switch (self) {
             .Object => |v| {
                 try w.writeByte('{');
-                for (v.keys()) |key, i| {
+                for (v.keys(), 0..) |key, i| {
                     if (i > 0) try w.writeByte(',');
                     var bytes = std.ArrayList(u8).init(a);
                     defer bytes.deinit();
@@ -33,7 +33,7 @@ const Value = union(enum) {
             },
             .Array => |v| {
                 try w.writeByte('[');
-                for (v.items) |value, i| {
+                for (v.items, 0..) |value, i| {
                     if (i > 0) try w.writeByte(',');
                     try value.stringify(a, w);
                 }
@@ -279,7 +279,7 @@ test "parse Array" {
         \\["foo" , 2]
     );
     var br = reader(fs.reader());
-    var v = try parse(a, &br);
+    const v = try parse(a, &br);
     try std.testing.expect(.Array == v);
     try std.testing.expect(std.mem.eql(u8, "foo", v.Array.items[0].String.items));
     try std.testing.expect(.Number == v.Array.items[1]);
