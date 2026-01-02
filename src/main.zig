@@ -1,11 +1,57 @@
 const std = @import("std");
 
 fn reader(r: anytype) bufReader(@TypeOf(r)) {
-    return std.io.peekStream(2, r);
+    return PeekableStream(@TypeOf(r)).init(r);
 }
 
 fn bufReader(comptime r: anytype) type {
-    return std.io.PeekStream(std.fifo.LinearFifoBufferType{ .Static = 2 }, r);
+    return PeekableStream(r);
+}
+
+fn PeekableStream(comptime ReaderType: type) type {
+    return struct {
+        const Self = @This();
+
+        underlying_reader: ReaderType,
+        peek_buffer: [2]?u8 = [_]?u8{null} ** 2,
+        peek_buffer_size: usize = 0,
+        peek_start: usize = 0,
+
+        pub fn init(underlying_reader_param: ReaderType) Self {
+            return Self{ .underlying_reader = underlying_reader_param };
+        }
+
+        pub fn readByte(self: *Self) JsonError!u8 {
+            if (self.peek_buffer_size > 0) {
+                const byte = self.peek_buffer[self.peek_start];
+                self.peek_start = (self.peek_start + 1) % self.peek_buffer.len;
+                self.peek_buffer_size -= 1;
+                return byte.?;
+            }
+
+            var byte: [1]u8 = undefined;
+            const n = self.underlying_reader.read(&byte) catch |err| {
+                switch (err) {
+                    error.EndOfStream => return error.EndOfStream,
+                    else => return error.InvalidCharacter,
+                }
+            };
+            if (n == 0) return error.EndOfStream;
+            return byte[0];
+        }
+
+        pub fn putBackByte(self: *Self, byte: u8) void {
+            if (self.peek_buffer_size < self.peek_buffer.len) {
+                self.peek_start = (self.peek_start + self.peek_buffer.len - 1) % self.peek_buffer.len;
+                self.peek_buffer[self.peek_start] = byte;
+                self.peek_buffer_size += 1;
+            }
+        }
+
+        pub fn reader(self: *Self) *Self {
+            return self;
+        }
+    };
 }
 
 const Value = union(enum) {
@@ -22,9 +68,9 @@ const Value = union(enum) {
                 try w.writeByte('{');
                 for (v.keys(), 0..) |key, i| {
                     if (i > 0) try w.writeByte(',');
-                    var bytes = std.ArrayList(u8).init(a);
-                    defer bytes.deinit();
-                    try bytes.writer().writeAll(key);
+                    var bytes = std.ArrayList(u8){};
+                    defer bytes.deinit(a);
+                    try bytes.writer(a).writeAll(key);
                     try (Value{ .String = bytes }).stringify(a, w);
                     try w.writeByte(':');
                     try v.get(key).?.stringify(a, w);
@@ -64,19 +110,19 @@ const Value = union(enum) {
         }
     }
 
-    pub fn deinit(self: *Value) void {
+    pub fn deinit(self: *Value, a: std.mem.Allocator) void {
         switch (self.*) {
             .Object => {
                 for (self.Object.keys()) |key| {
-                    self.Object.allocator.free(key);
+                    a.free(key);
                 }
                 self.Object.deinit();
             },
             .Array => {
-                self.Array.deinit();
+                self.Array.deinit(a);
             },
             .String => {
-                self.String.deinit();
+                self.String.deinit(a);
             },
             else => {},
         }
@@ -93,7 +139,7 @@ fn skipWhilte(br: anytype) JsonError!void {
         switch (r.readByte() catch 0) {
             ' ', '\t', '\r', '\n' => {},
             else => |v| {
-                if (v != 0) try br.putBackByte(v);
+                if (v != 0) br.putBackByte(v);
                 break :loop;
             },
         }
@@ -109,13 +155,13 @@ fn parseObject(a: std.mem.Allocator, br: anytype) JsonError!std.StringArrayHashM
     while (true) {
         try skipWhilte(br);
         var key = try parseString(a, br);
-        defer key.deinit();
+        defer key.deinit(a);
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte != ':') return error.SyntaxError;
         try skipWhilte(br);
         const value = try parse(a, br);
-        try m.put(key.toOwnedSlice(), value);
+        try m.put(try key.toOwnedSlice(a), value);
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte == '}') break;
@@ -127,12 +173,12 @@ fn parseArray(a: std.mem.Allocator, br: anytype) JsonError!std.ArrayList(Value) 
     const r = br.reader();
     var byte = try r.readByte();
     if (byte != '[') return error.SyntaxError;
-    var m = std.ArrayList(Value).init(a);
-    errdefer m.deinit();
+    var m = std.ArrayList(Value){};
+    errdefer m.deinit(a);
     while (true) {
         try skipWhilte(br);
         const value = try parse(a, br);
-        try m.append(value);
+        try m.append(a, value);
         try skipWhilte(br);
         byte = try r.readByte();
         if (byte == ']') break;
@@ -145,8 +191,8 @@ fn parseString(a: std.mem.Allocator, br: anytype) JsonError!std.ArrayList(u8) {
     const r = br.reader();
     var byte = try r.readByte();
     if (byte != '"') return error.SyntaxError;
-    var bytes = std.ArrayList(u8).init(a);
-    errdefer bytes.deinit();
+    var bytes = std.ArrayList(u8){};
+    errdefer bytes.deinit(a);
     while (true) {
         byte = try r.readByte();
         if (byte == '\\') {
@@ -159,22 +205,22 @@ fn parseString(a: std.mem.Allocator, br: anytype) JsonError!std.ArrayList(u8) {
         } else if (byte == '"') {
             break;
         }
-        try bytes.append(byte);
+        try bytes.append(a, byte);
     }
     return bytes;
 }
 
 fn parseBool(a: std.mem.Allocator, br: anytype) JsonError!bool {
     const r = br.reader();
-    var bytes = std.ArrayList(u8).init(a);
-    errdefer bytes.deinit();
+    var bytes = std.ArrayList(u8){};
+    errdefer bytes.deinit(a);
     loop: while (true) {
         switch (r.readByte() catch 0) {
             't', 'r', 'u', 'e', 'f', 'a', 'l', 's' => |v| {
-                try bytes.append(v);
+                try bytes.append(a, v);
             },
             else => |v| {
-                if (v != 0) try br.putBackByte(v);
+                if (v != 0) br.putBackByte(v);
                 break :loop;
             },
         }
@@ -186,15 +232,15 @@ fn parseBool(a: std.mem.Allocator, br: anytype) JsonError!bool {
 
 fn parseNull(a: std.mem.Allocator, br: anytype) JsonError!void {
     const r = br.reader();
-    var bytes = std.ArrayList(u8).init(a);
-    errdefer bytes.deinit();
+    var bytes = std.ArrayList(u8){};
+    errdefer bytes.deinit(a);
     loop: while (true) {
         switch (r.readByte() catch 0) {
             'n', 'u', 'l' => |v| {
-                try bytes.append(v);
+                try bytes.append(a, v);
             },
             else => |v| {
-                if (v != 0) try br.putBackByte(v);
+                if (v != 0) br.putBackByte(v);
                 break :loop;
             },
         }
@@ -205,15 +251,15 @@ fn parseNull(a: std.mem.Allocator, br: anytype) JsonError!void {
 
 fn parseNumber(a: std.mem.Allocator, br: anytype) JsonError!f64 {
     const r = br.reader();
-    var bytes = std.ArrayList(u8).init(a);
-    defer bytes.deinit();
+    var bytes = std.ArrayList(u8){};
+    defer bytes.deinit(a);
     loop: while (true) {
         switch (r.readByte() catch 0) {
             '0'...'9', '-', 'e', '.' => |v| {
-                try bytes.append(v);
+                try bytes.append(a, v);
             },
             else => |v| {
-                if (v != 0) try br.putBackByte(v);
+                if (v != 0) br.putBackByte(v);
                 break :loop;
             },
         }
@@ -225,7 +271,7 @@ pub fn parse(a: std.mem.Allocator, br: anytype) JsonError!Value {
     try skipWhilte(br);
     const r = br.reader();
     const byte = try r.readByte();
-    try br.putBackByte(byte);
+    br.putBackByte(byte);
     return switch (byte) {
         '{' => Value{ .Object = try parseObject(a, br) }, // ok
         '[' => Value{ .Array = try parseArray(a, br) }, // ok
@@ -265,8 +311,9 @@ test "parse Object" {
     );
     br = reader(fs.reader());
     v = try parse(a, &br);
-    var bytes = std.ArrayList(u8).init(a);
-    try v.stringify(a, bytes.writer());
+    var bytes = std.ArrayList(u8){};
+    defer bytes.deinit(a);
+    try v.stringify(a, bytes.writer(a));
     try std.testing.expect(std.mem.eql(u8,
         \\{"foo":{"bar":true}}
     , bytes.items));
@@ -310,12 +357,19 @@ test "leak test" {
     );
     var br = reader(fs.reader());
     var v = try parse(a, &br);
-    v.deinit();
+    v.deinit(a);
+
+    fs = std.io.fixedBufferStream(
+        \\"fo"
+    );
+    br = reader(fs.reader());
+    v = try parse(a, &br);
+    v.deinit(a);
 
     fs = std.io.fixedBufferStream(
         \\{"foo": 1}
     );
     br = reader(fs.reader());
     v = try parse(a, &br);
-    v.deinit();
+    v.deinit(a);
 }
